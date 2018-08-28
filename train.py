@@ -75,16 +75,16 @@ def VGG16PlanInferencet(x, n_classes, is_pretrain=True):
 
 
 if __name__ == '__main__':
-    train = create_train_data
-    testData = create_test_data
+    train = create_train_data()
+    testData = create_test_data()
     with tf.name_scope("input"):  
         x_image = tf.placeholder(tf.float32, shape=[None,IMG_SIZE,IMG_SIZE,3], name = 'x-input')
         y_ = tf.placeholder(tf.float32, shape=[None, 12], name = 'y-input') 
         
-        X = np.array([i[0] for i in train]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
+        X = np.array([i[0] for i in train]).reshape(-1,IMG_SIZE,IMG_SIZE,1)
         Y = [i[1] for i in train]  
-        test_x = np.array([i[0] for i in test]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
-        test_y = [i[1] for i in test]
+        test_x = np.array([i[0] for i in testData]).reshape(-1,IMG_SIZE,IMG_SIZE,1)
+        test_y = [i[1] for i in testData]
 #         keep_prob = tf.placeholder(tf.float32)      
     regularizer = tf.contrib.layers.l2_regularizer(REGULARIZATION_RATE)
     y_conv = VGG16PlanInferencet(x_image, NUM_CLASS)
@@ -96,7 +96,8 @@ if __name__ == '__main__':
     with tf.name_scope("loss_average"):    
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv)) 
 #         loss = cross_entropy + regularizer       
-        loss = cross_entropy + tf.add_n(tf.get_collection('losses'))
+#         loss = cross_entropy + tf.add_n(tf.get_collection('losses'))
+        loss = cross_entropy
         
     with tf.name_scope("train_step"):         
         learning_rate = tf.train.exponential_decay(LEARNING_RATE_BASE, global_step, 15000, LEARNING_RATE_DECAY, staircase=True)
@@ -114,7 +115,7 @@ if __name__ == '__main__':
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess = sess, coord = coord)
         for i in range(20000//BATCH_SIZE):
-            image_batch, label_batch = tf.train.batch([X, Y], 
+            image_batch, label_batch = tf.train.shuffle_batch([X, Y], 
                                                       batch_size = BATCH_SIZE, 
                                                       capacity = capacity, 
                                                       min_after_dequeue = min_after_dequeue, 

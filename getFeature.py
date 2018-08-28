@@ -63,6 +63,4 @@ def create_test_data():
         test.append([np.array(img), img_num])   
     shuffle(test)
     return test
-train_data = create_train_data()
-test_data = create_test_data()
-print(train_data.shape())
+
