@@ -27,6 +27,20 @@ def label_img(word_label):
     elif word_label == 'Small-flowered Cranesbill': return [0,0,0,0,0,0,0,0,0,0,1,0]
     elif word_label == 'Sugar beet': return [0,0,0,0,0,0,0,0,0,0,0,1] 
     
+def label_return (model_out):
+    if np.argmax(model_out) == 0: return  'Black-grass'
+    elif np.argmax(model_out) == 1: return 'Charlock'
+    elif np.argmax(model_out) == 2: return 'Cleavers'
+    elif np.argmax(model_out) == 3: return 'Common Chickweed'
+    elif np.argmax(model_out) == 4: return 'Common wheat'
+    elif np.argmax(model_out) == 5: return 'Fat Hen'
+    elif np.argmax(model_out) == 6: return 'Loose Silky-bent'
+    elif np.argmax(model_out) == 7: return 'Maize'
+    elif np.argmax(model_out) == 8: return 'Scentless Mayweed'
+    elif np.argmax(model_out) == 9: return 'Shepherds Purse'
+    elif np.argmax(model_out) == 10: return 'Small-flowered Cranesbill'
+    elif np.argmax(model_out) == 11: return 'Sugar beet'
+    
 def create_train_data():
     train = []
     for category_id, category in enumerate(CATEGORIES):

@@ -5,7 +5,7 @@ import pandas as pd #data manipulation and analysis
 from tqdm import tqdm # for  well-established ProgressBar
 from random import shuffle
 import tools
-from getFeature import create_train_data, create_test_data
+from getFeature import create_train_data, create_test_data, label_return
 LR = 1e-3
 # MODEL_NAME = 'plantclassfication-{}-{}.model'.format(LR, '2conv-basic')
 
@@ -26,6 +26,14 @@ NUN_THREADS = 4
 min_after_dequeue = 1000
 capacity = min_after_dequeue + 3 * BATCH_SIZE
 
+def get_batchs(data, BATCH_SIZE):
+    size = data.shape[0]
+    for i in range(size//BATCH_SIZE):
+        if (i+1)*BATCH_SIZE > size:
+            yield data[i*BATCH_SIZE:]
+        else:
+            yield data[i*BATCH_SIZE:(i+1)*BATCH_SIZE]
+            
 import tensorflow as tf
 tf.reset_default_graph()
 
@@ -54,9 +62,9 @@ def VGG16PlanInferencet(x, n_classes, is_pretrain=True):
     x = tools.pool('pool3', x, kernel=[1,2,2,1], stride=[1,2,2,1], is_max_pool=True)            
 
     x = tools.FC_layer('fc6', x, out_nodes=4096)
-    #x = tools.batch_norm(x)
+    x = tools.batch_norm(x)
     x = tools.FC_layer('fc7', x, out_nodes=4096)
-    #x = tools.batch_norm(x)
+    x = tools.batch_norm(x)
     x = tools.FC_layer('fc8', x, out_nodes=n_classes)
 
     return x
@@ -68,7 +76,7 @@ def VGG16PlanInferencet(x, n_classes, is_pretrain=True):
 
 if __name__ == '__main__':
     train = create_train_data
-    test = create_test_data
+    testData = create_test_data
     with tf.name_scope("input"):  
         x_image = tf.placeholder(tf.float32, shape=[None,IMG_SIZE,IMG_SIZE,3], name = 'x-input')
         y_ = tf.placeholder(tf.float32, shape=[None, 12], name = 'y-input') 
@@ -77,8 +85,7 @@ if __name__ == '__main__':
         Y = [i[1] for i in train]  
         test_x = np.array([i[0] for i in test]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
         test_y = [i[1] for i in test]
-#         keep_prob = tf.placeholder(tf.float32)
-#         x_image = tf.reshape(x, [-1,28,28,1])        
+#         keep_prob = tf.placeholder(tf.float32)      
     regularizer = tf.contrib.layers.l2_regularizer(REGULARIZATION_RATE)
     y_conv = VGG16PlanInferencet(x_image, NUM_CLASS)
     global_step = tf.Variable(0, trainable=False)    
@@ -106,7 +113,7 @@ if __name__ == '__main__':
         sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess = sess, coord = coord)
-        for i in range(MAX_STEPS):
+        for i in range(20000//BATCH_SIZE):
             image_batch, label_batch = tf.train.batch([X, Y], 
                                                       batch_size = BATCH_SIZE, 
                                                       capacity = capacity, 
@@ -122,42 +129,41 @@ if __name__ == '__main__':
             train_step.run(feed_dict={x_image: X, y_: Y})
         coord.request_stop()
         coord.join(threads)
+     
+        ckpt = tf.train.get_checkpoint_state(MODEL_SAVE_PATH)
+        if ckpt and ckpt.model_checkpoint_path: saver.restore(sess, ckpt.model_checkpoint_path)
+        for data in testData:
+            img_num = data[1]
+            img_data = data[0]
+            orig = img_data
+            data = img_data.reshape(IMG_SIZE,IMG_SIZE,3)
+            prediction = tf.argmax(y_conv, 1)
+            test_labels = prediction.eval(feed_dict={x_image: data})
+            
+        
     
 # model.fit({'input': X}, {'targets': Y}, n_epoch=5, validation_set=({'input': test_x}, {'targets': test_y}), 
 #     snapshot_step=500, show_metric=True, run_id=MODEL_NAME)
 
 # model.save(MODEL_NAME)
 
-def label_return (model_out):
-    if np.argmax(model_out) == 0: return  'Black-grass'
-    elif np.argmax(model_out) == 1: return 'Charlock'
-    elif np.argmax(model_out) == 2: return 'Cleavers'
-    elif np.argmax(model_out) == 3: return 'Common Chickweed'
-    elif np.argmax(model_out) == 4: return 'Common wheat'
-    elif np.argmax(model_out) == 5: return 'Fat Hen'
-    elif np.argmax(model_out) == 6: return 'Loose Silky-bent'
-    elif np.argmax(model_out) == 7: return 'Maize'
-    elif np.argmax(model_out) == 8: return 'Scentless Mayweed'
-    elif np.argmax(model_out) == 9: return 'Shepherds Purse'
-    elif np.argmax(model_out) == 10: return 'Small-flowered Cranesbill'
-    elif np.argmax(model_out) == 11: return 'Sugar beet'
     
-import matplotlib.pyplot as plt
-test_data = create_test_data()
-fig=plt.figure(figsize = (18,10))
-for num,data in enumerate(test_data[:12]): 
-    img_num = data[1]
-    img_data = data[0]
-    y = fig.add_subplot(3,4,num+1)
-    orig = img_data
-    data = img_data.reshape(IMG_SIZE,IMG_SIZE,1)
-    model_out = model.predict([data])[0]
-    str_label=label_return (model_out)
-    y.imshow(orig,cmap='gray',interpolation='nearest')
-    plt.title(str_label)
-    y.axes.get_xaxis().set_visible(False)
-    y.axes.get_yaxis().set_visible(False)
-plt.show()
+# import matplotlib.pyplot as plt
+# test_data = create_test_data()
+# fig=plt.figure(figsize = (18,10))
+# for num,data in enumerate(test_data[:12]): 
+#     img_num = data[1]
+#     img_data = data[0]
+#     y = fig.add_subplot(3,4,num+1)
+#     orig = img_data
+#     data = img_data.reshape(IMG_SIZE,IMG_SIZE,1)
+#     model_out = model.predict([data])[0]
+#     str_label=label_return (model_out)
+#     y.imshow(orig,cmap='gray',interpolation='nearest')
+#     plt.title(str_label)
+#     y.axes.get_xaxis().set_visible(False)
+#     y.axes.get_yaxis().set_visible(False)
+# plt.show()
 
 test_data = create_test_data()
 with open('sample_submission.csv','w') as f:
@@ -166,7 +172,7 @@ with open('sample_submission.csv','w') as f:
         img_num = data[1]
         img_data = data[0]
         orig = img_data
-        data = img_data.reshape(IMG_SIZE,IMG_SIZE,1)
+        data = img_data.reshape(IMG_SIZE,IMG_SIZE,3)
         model_out = model.predict([data])[0]
         str_label=label_return (model_out)
         file = img_num
