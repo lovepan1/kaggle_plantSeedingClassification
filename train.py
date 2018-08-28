@@ -17,11 +17,14 @@ NUM_CLASS = 12
 LEARNING_RATE_BASE = 0.0008
 LEARNING_RATE_DECAY = 0.99
 REGULARIZATION_RATE = 0.00004
-MODEL_SAVE_PATH="MNIST_model/"
-MODEL_NAME="mnist_model"
+MODEL_SAVE_PATH="plant_model/"
+MODEL_NAME="plant_model"
 BATCH_SIZE = 32
 MAX_STEPS = 15000
 MOVING_AVERAGE_DECAY = 0.99
+NUN_THREADS = 4
+min_after_dequeue = 1000
+capacity = min_after_dequeue + 3 * BATCH_SIZE
 
 import tensorflow as tf
 tf.reset_default_graph()
@@ -62,26 +65,23 @@ def VGG16PlanInferencet(x, n_classes, is_pretrain=True):
 #     model.load(MODEL_NAME)
 #     print('model loaded!')
 
-train = create_train_data
-test = create_test_data
 
-X = np.array([i[0] for i in train]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
-Y = [i[1] for i in train]
-
-test_x = np.array([i[0] for i in test]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
-test_y = [i[1] for i in test]
-
-def training():
-    with tf.name_scope("input"):
-        
+if __name__ == '__main__':
+    train = create_train_data
+    test = create_test_data
+    with tf.name_scope("input"):  
         x_image = tf.placeholder(tf.float32, shape=[None,IMG_SIZE,IMG_SIZE,3], name = 'x-input')
         y_ = tf.placeholder(tf.float32, shape=[None, 12], name = 'y-input') 
+        
+        X = np.array([i[0] for i in train]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
+        Y = [i[1] for i in train]  
+        test_x = np.array([i[0] for i in test]).reshape(-1,IMG_SIZE,IMG_SIZE,3)
+        test_y = [i[1] for i in test]
 #         keep_prob = tf.placeholder(tf.float32)
 #         x_image = tf.reshape(x, [-1,28,28,1])        
     regularizer = tf.contrib.layers.l2_regularizer(REGULARIZATION_RATE)
     y_conv = VGG16PlanInferencet(x_image, NUM_CLASS)
-    global_step = tf.Variable(0, trainable=False)
-    
+    global_step = tf.Variable(0, trainable=False)    
     with tf.name_scope("moving_average"):
         variable_averages = tf.train.ExponentialMovingAverage(MOVING_AVERAGE_DECAY, global_step)
         variables_averages_op = variable_averages.apply(tf.trainable_variables())
@@ -100,16 +100,28 @@ def training():
     accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
     saver = tf.train.Saver()
     writer = tf.summary.FileWriter("/path/to//log", tf.get_default_graph())
-    writer.close()   
-    sess = tf.InteractiveSession()
-    sess.run(tf.global_variables_initializer())
-    image_batch, label_batch = tf.train.shuffle_batch([X, Y], 
+    writer.close()  
+
+    with tf.Session() as sess:    
+        sess.run([tf.global_variables_initializer(), tf.local_variables_initializer()])
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess = sess, coord = coord)
+        for i in range(MAX_STEPS):
+            image_batch, label_batch = tf.train.batch([X, Y], 
                                                       batch_size = BATCH_SIZE, 
                                                       capacity = capacity, 
                                                       min_after_dequeue = min_after_dequeue, 
-                                                      num_threads = num_threads)
-    for i in range(MAX_STEPS):
-        batch = train.next_batch(BATCH_SIZE) 
+                                                      num_threads = NUN_THREADS)  
+            if i%10 == 0:
+                train_accuracy = accuracy.eval(feed_dict={x_image: X, y_: Y})
+                print("step %d, training accuracy %g"%(i, train_accuracy))
+            if i%100 == 0:
+                saver.save(sess, os.path.join(MODEL_SAVE_PATH, MODEL_NAME), global_step= global_step)
+#                 print("test accuracy %g"%accuracy.eval(feed_dict={
+#                                                       x: validation.images, y_: validation.labels, keep_prob: 1.0}))          
+            train_step.run(feed_dict={x_image: X, y_: Y})
+        coord.request_stop()
+        coord.join(threads)
     
 # model.fit({'input': X}, {'targets': Y}, n_epoch=5, validation_set=({'input': test_x}, {'targets': test_y}), 
 #     snapshot_step=500, show_metric=True, run_id=MODEL_NAME)
